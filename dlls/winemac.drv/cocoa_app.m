@@ -243,8 +243,19 @@ static NSString* WineLocalizedString(unsigned int stringID)
 
             mainMenu = [[[NSMenu alloc] init] autorelease];
 
-            // Application menu
-            submenu = [[[NSMenu alloc] initWithTitle:WineLocalizedString(STRING_MENU_WINE)] autorelease];
+            // Application menu - use SOJU_EXE_PATH if available
+            NSString* appMenuTitle = nil;
+            const char* sojuExePath = getenv("SOJU_EXE_PATH");
+            if (sojuExePath)
+            {
+                NSString* exePath = [NSString stringWithUTF8String:sojuExePath];
+                appMenuTitle = [[exePath lastPathComponent] stringByDeletingPathExtension];
+                NSLog(@"[Soju] App menu title from SOJU_EXE_PATH: %@", appMenuTitle);
+            }
+            if (![appMenuTitle length])
+                appMenuTitle = WineLocalizedString(STRING_MENU_WINE);
+
+            submenu = [[[NSMenu alloc] initWithTitle:appMenuTitle] autorelease];
             bundleName = [[NSBundle mainBundle] objectForInfoDictionaryKey:(NSString*)kCFBundleNameKey];
 
             if ([bundleName length])
@@ -271,7 +282,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
             item = [submenu addItemWithTitle:title action:@selector(terminate:) keyEquivalent:@"q"];
             [item setKeyEquivalentModifierMask:NSEventModifierFlagCommand | NSEventModifierFlagOption];
             item = [[[NSMenuItem alloc] init] autorelease];
-            [item setTitle:WineLocalizedString(STRING_MENU_WINE)];
+            [item setTitle:appMenuTitle];
             [item setSubmenu:submenu];
             [mainMenu addItem:item];
 
