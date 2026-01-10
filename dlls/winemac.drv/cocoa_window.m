@@ -1056,8 +1056,10 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         }
         else
         {
-            [window setIdentifier:@"wine-unknown"];
-            NSLog(@"[Soju] No SOJU_EXE_PATH, using wine-unknown");
+            /* Fallback: use hwnd as unique identifier */
+            NSString* identifier = [NSString stringWithFormat:@"wine-hwnd-%p", hwnd];
+            [window setIdentifier:identifier];
+            NSLog(@"[Soju] No SOJU_EXE_PATH, using hwnd: %@", identifier);
         }
 
         [window registerForDraggedTypes:@[(NSString*)kUTTypeData, (NSString*)kUTTypeContent]];
