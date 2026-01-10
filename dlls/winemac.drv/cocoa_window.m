@@ -1050,16 +1050,16 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         const char* exePath = getenv("SOJU_EXE_PATH");
         if (exePath)
         {
-            NSString* identifier = [NSString stringWithUTF8String:exePath];
+            NSString* fullPath = [NSString stringWithUTF8String:exePath];
+            NSString* identifier = [fullPath lastPathComponent];  // 파일명만 추출
             [window setIdentifier:identifier];
             NSLog(@"[Soju] Window identifier set to: %@", identifier);
         }
         else
         {
-            /* Fallback: use hwnd as unique identifier */
-            NSString* identifier = [NSString stringWithFormat:@"wine-hwnd-%p", hwnd];
-            [window setIdentifier:identifier];
-            NSLog(@"[Soju] No SOJU_EXE_PATH, using hwnd: %@", identifier);
+            /* Fallback: generic wine identifier */
+            [window setIdentifier:@"wine-unknown"];
+            NSLog(@"[Soju] No SOJU_EXE_PATH, using fallback: wine-unknown");
         }
 
         [window registerForDraggedTypes:@[(NSString*)kUTTypeData, (NSString*)kUTTypeContent]];
