@@ -1063,6 +1063,16 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
             NSLog(@"[Soju] No SOJU_EXE_PATH, using fallback: %@", identifier);
         }
 
+        /* Tabbing: group windows by workspace */
+        const char* workspaceId = getenv("SOJU_WORKSPACE_ID");
+        if (workspaceId)
+        {
+            NSString* tabbingId = [NSString stringWithFormat:@"soju-workspace-%s", workspaceId];
+            [window setTabbingIdentifier:tabbingId];
+            [window setTabbingMode:NSWindowTabbingModePreferred];
+            NSLog(@"[Soju] Window tabbing identifier set to: %@", tabbingId);
+        }
+
         [window registerForDraggedTypes:@[(NSString*)kUTTypeData, (NSString*)kUTTypeContent]];
 
         contentView = [[[WineContentView alloc] initWithFrame:NSZeroRect] autorelease];
