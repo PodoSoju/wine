@@ -1046,6 +1046,20 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         window->resizable = wf->resizable;
         window->_lastDisplayTime = [[NSDate distantPast] timeIntervalSinceReferenceDate];
 
+        /* Set window identifier from SOJU_EXE_PATH for PodoSoju integration */
+        const char* exePath = getenv("SOJU_EXE_PATH");
+        if (exePath)
+        {
+            NSString* identifier = [NSString stringWithUTF8String:exePath];
+            [window setIdentifier:identifier];
+            NSLog(@"[Soju] Window identifier set to: %@", identifier);
+        }
+        else
+        {
+            [window setIdentifier:@"wine-unknown"];
+            NSLog(@"[Soju] No SOJU_EXE_PATH, using wine-unknown");
+        }
+
         [window registerForDraggedTypes:@[(NSString*)kUTTypeData, (NSString*)kUTTypeContent]];
 
         contentView = [[[WineContentView alloc] initWithFrame:NSZeroRect] autorelease];
