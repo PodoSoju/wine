@@ -1057,9 +1057,10 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         }
         else
         {
-            /* Fallback: generic wine identifier */
-            [window setIdentifier:@"wine-unknown"];
-            NSLog(@"[Soju] No SOJU_EXE_PATH, using fallback: wine-unknown");
+            /* Fallback: unique identifier using UUID */
+            NSString* identifier = [NSString stringWithFormat:@"wine-%@", [[NSUUID UUID] UUIDString]];
+            [window setIdentifier:identifier];
+            NSLog(@"[Soju] No SOJU_EXE_PATH, using fallback: %@", identifier);
         }
 
         [window registerForDraggedTypes:@[(NSString*)kUTTypeData, (NSString*)kUTTypeContent]];
