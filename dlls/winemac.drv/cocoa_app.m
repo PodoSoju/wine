@@ -258,8 +258,8 @@ static NSString* WineLocalizedString(unsigned int stringID)
             submenu = [[[NSMenu alloc] initWithTitle:appMenuTitle] autorelease];
             bundleName = [[NSBundle mainBundle] objectForInfoDictionaryKey:(NSString*)kCFBundleNameKey];
 
-            if ([bundleName length])
-                title = [NSString stringWithFormat:WineLocalizedString(STRING_MENU_ITEM_HIDE_APPNAME), bundleName];
+            if ([appMenuTitle length])
+                title = [NSString stringWithFormat:WineLocalizedString(STRING_MENU_ITEM_HIDE_APPNAME), appMenuTitle];
             else
                 title = WineLocalizedString(STRING_MENU_ITEM_HIDE);
             item = [submenu addItemWithTitle:title action:@selector(hide:) keyEquivalent:@""];
@@ -275,8 +275,8 @@ static NSString* WineLocalizedString(unsigned int stringID)
 
             [submenu addItem:[NSMenuItem separatorItem]];
 
-            if ([bundleName length])
-                title = [NSString stringWithFormat:WineLocalizedString(STRING_MENU_ITEM_QUIT_APPNAME), bundleName];
+            if ([appMenuTitle length])
+                title = [NSString stringWithFormat:WineLocalizedString(STRING_MENU_ITEM_QUIT_APPNAME), appMenuTitle];
             else
                 title = WineLocalizedString(STRING_MENU_ITEM_QUIT);
             item = [submenu addItemWithTitle:title action:@selector(terminate:) keyEquivalent:@"q"];

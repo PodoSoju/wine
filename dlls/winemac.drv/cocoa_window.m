@@ -1051,7 +1051,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         if (exePath)
         {
             NSString* fullPath = [NSString stringWithUTF8String:exePath];
-            NSString* identifier = [fullPath lastPathComponent];  // 파일명만 추출
+            NSString* identifier = [[fullPath lastPathComponent] stringByDeletingPathExtension];  // 파일명만, 확장자 제거
             [window setIdentifier:identifier];
             NSLog(@"[Soju] Window identifier set to: %@", identifier);
         }
