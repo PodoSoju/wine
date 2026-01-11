@@ -3,17 +3,19 @@
  *
  * Pure C, no dependencies, works on Unix/Linux/macOS
  *
- * Usage: soju-extract-icon <input.exe> <output.png|ico>
+ * Usage: soju-extract-icon <input.exe> <output_base>
  *
- * Output format is determined by file extension:
- *   .png - PNG format (direct if available, error if BMP only)
- *   .ico - ICO format (always works)
+ * Outputs all available formats:
+ *   <output_base>.ico - Always created (universal format)
+ *   <output_base>.png - Created if icon is PNG format
+ *   <output_base>.bmp - Created if icon is BMP format
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <strings.h>  /* strcasecmp */
 
 /* PE structures */
 #pragma pack(push, 1)
@@ -152,6 +154,29 @@ typedef struct {
     uint32_t dwBytesInRes;
     uint32_t dwImageOffset;
 } ICONDIRENTRY;
+
+/* BMP structures */
+typedef struct {
+    uint16_t bfType;        /* "BM" */
+    uint32_t bfSize;
+    uint16_t bfReserved1;
+    uint16_t bfReserved2;
+    uint32_t bfOffBits;
+} BITMAPFILEHEADER;
+
+typedef struct {
+    uint32_t biSize;
+    int32_t  biWidth;
+    int32_t  biHeight;
+    uint16_t biPlanes;
+    uint16_t biBitCount;
+    uint32_t biCompression;
+    uint32_t biSizeImage;
+    int32_t  biXPelsPerMeter;
+    int32_t  biYPelsPerMeter;
+    uint32_t biClrUsed;
+    uint32_t biClrImportant;
+} BITMAPINFOHEADER;
 
 #pragma pack(pop)
 
@@ -388,52 +413,20 @@ int main(int argc, char **argv)
     uint8_t *icon_bits = g_rsrc_data + (icon_data->OffsetToData - g_rsrc_rva);
     uint32_t icon_size = icon_data->Size;
 
-    /* Check if icon data is already PNG (magic: 0x89 PNG) */
+    /* Check if icon data is PNG (magic: 0x89 PNG) */
     static const uint8_t png_magic[] = { 0x89, 0x50, 0x4E, 0x47 };
     int is_png_data = (icon_size >= 4 && memcmp(icon_bits, png_magic, 4) == 0);
 
-    /* Determine output format from extension */
-    const char *ext = strrchr(argv[2], '.');
-    int want_png = (ext && (strcmp(ext, ".png") == 0 || strcmp(ext, ".PNG") == 0));
-    int want_ico = (ext && (strcmp(ext, ".ico") == 0 || strcmp(ext, ".ICO") == 0));
+    int width = icon_dir->idEntries[best_idx].bWidth ? icon_dir->idEntries[best_idx].bWidth : 256;
+    int height = icon_dir->idEntries[best_idx].bHeight ? icon_dir->idEntries[best_idx].bHeight : 256;
 
-    if (!want_png && !want_ico) {
-        fprintf(stderr, "Error: Output must be .png or .ico\n");
-        free(g_rsrc_data);
-        free(sections);
-        fclose(g_file);
-        return 1;
-    }
+    char outpath[4096];
+    FILE *outfile;
 
-    FILE *outfile = fopen(argv[2], "wb");
-    if (!outfile) {
-        fprintf(stderr, "Error: Cannot create %s\n", argv[2]);
-        free(g_rsrc_data);
-        free(sections);
-        fclose(g_file);
-        return 1;
-    }
-
-    if (want_png) {
-        if (is_png_data) {
-            /* Icon is PNG - write directly */
-            fwrite(icon_bits, 1, icon_size, outfile);
-            fclose(outfile);
-            printf("PNG icon saved to %s (%dx%d)\n", argv[2],
-                   icon_dir->idEntries[best_idx].bWidth ? icon_dir->idEntries[best_idx].bWidth : 256,
-                   icon_dir->idEntries[best_idx].bHeight ? icon_dir->idEntries[best_idx].bHeight : 256);
-        } else {
-            fclose(outfile);
-            remove(argv[2]);
-            fprintf(stderr, "Error: Icon is BMP format, cannot output PNG directly.\n");
-            fprintf(stderr, "Use .ico extension and convert with: sips -s format png input.ico --out output.png\n");
-            free(g_rsrc_data);
-            free(sections);
-            fclose(g_file);
-            return 1;
-        }
-    } else {
-        /* Write ICO format */
+    /* 1. Always write ICO */
+    snprintf(outpath, sizeof(outpath), "%s.ico", argv[2]);
+    outfile = fopen(outpath, "wb");
+    if (outfile) {
         uint16_t ico_reserved = 0, ico_type = 1, ico_count = 1;
         fwrite(&ico_reserved, 2, 1, outfile);
         fwrite(&ico_type, 2, 1, outfile);
@@ -452,10 +445,48 @@ int main(int argc, char **argv)
         fwrite(&ico_entry, sizeof(ico_entry), 1, outfile);
         fwrite(icon_bits, 1, icon_size, outfile);
         fclose(outfile);
-        printf("ICO icon saved to %s (%dx%d, %s format)\n", argv[2],
-               icon_dir->idEntries[best_idx].bWidth ? icon_dir->idEntries[best_idx].bWidth : 256,
-               icon_dir->idEntries[best_idx].bHeight ? icon_dir->idEntries[best_idx].bHeight : 256,
-               is_png_data ? "PNG" : "BMP");
+        printf("ICO: %s (%dx%d)\n", outpath, width, height);
+    }
+
+    /* 2. Write PNG if icon is PNG format */
+    if (is_png_data) {
+        snprintf(outpath, sizeof(outpath), "%s.png", argv[2]);
+        outfile = fopen(outpath, "wb");
+        if (outfile) {
+            fwrite(icon_bits, 1, icon_size, outfile);
+            fclose(outfile);
+            printf("PNG: %s (%dx%d)\n", outpath, width, height);
+        }
+    }
+
+    /* 3. Write BMP if icon is BMP format */
+    if (!is_png_data) {
+        snprintf(outpath, sizeof(outpath), "%s.bmp", argv[2]);
+        outfile = fopen(outpath, "wb");
+        if (outfile) {
+            BITMAPINFOHEADER *dib = (BITMAPINFOHEADER*)icon_bits;
+            int real_height = dib->biHeight / 2;
+            int row_size = ((dib->biWidth * dib->biBitCount + 31) / 32) * 4;
+            int pixel_size = row_size * real_height;
+
+            BITMAPFILEHEADER bfh = {
+                .bfType = 0x4D42,
+                .bfSize = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER) + pixel_size,
+                .bfReserved1 = 0,
+                .bfReserved2 = 0,
+                .bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER)
+            };
+
+            BITMAPINFOHEADER bih = *dib;
+            bih.biHeight = real_height;
+            bih.biSizeImage = pixel_size;
+
+            fwrite(&bfh, sizeof(bfh), 1, outfile);
+            fwrite(&bih, sizeof(bih), 1, outfile);
+            fwrite(icon_bits + sizeof(BITMAPINFOHEADER), 1, pixel_size, outfile);
+            fclose(outfile);
+            printf("BMP: %s (%dx%d)\n", outpath, width, height);
+        }
     }
 
     free(g_rsrc_data);
