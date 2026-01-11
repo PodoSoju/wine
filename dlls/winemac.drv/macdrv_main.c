@@ -64,6 +64,14 @@ UINT64 app_quit_request_callback = 0;
 
 CFDictionaryRef localized_strings;
 
+/* [Soju] App info for Cocoa driver (Fallback when env vars not available) */
+struct soju_app_info {
+    char exe_path[1024];    /* Windows path: C:\path\to\app.exe */
+    char filename[256];     /* Filename without extension */
+    int initialized;
+};
+struct soju_app_info g_soju_app_info = { 0 };
+
 
 /**************************************************************************
  *              debugstr_cf
@@ -421,6 +429,58 @@ static void load_strings(struct localized_string *str)
 
 
 /***********************************************************************
+ *              init_soju_app_info
+ *
+ * Initialize Soju app info from Wine's internal structures (Fallback).
+ * Used when SOJU_APP_PATH env var is not set.
+ */
+static void init_soju_app_info(void)
+{
+    WCHAR *image_path;
+    WCHAR *filename_start;
+    char *p;
+
+    if (g_soju_app_info.initialized)
+        return;
+
+    /* Get exe path from Wine's ProcessParameters */
+    image_path = NtCurrentTeb()->Peb->ProcessParameters->ImagePathName.Buffer;
+    if (!image_path)
+    {
+        TRACE("Soju: No ImagePathName available\n");
+        g_soju_app_info.initialized = TRUE;
+        return;
+    }
+
+    /* Convert to UTF-8 */
+    ntdll_wcstoumbs(image_path, wcslen(image_path) + 1,
+                    g_soju_app_info.exe_path, sizeof(g_soju_app_info.exe_path), FALSE);
+
+    /* Extract filename */
+    filename_start = wcsrchr(image_path, '\\');
+    if (!filename_start)
+        filename_start = wcsrchr(image_path, '/');
+    if (filename_start)
+        filename_start++;
+    else
+        filename_start = image_path;
+
+    ntdll_wcstoumbs(filename_start, wcslen(filename_start) + 1,
+                    g_soju_app_info.filename, sizeof(g_soju_app_info.filename), FALSE);
+
+    /* Remove .exe extension from filename for display */
+    p = strrchr(g_soju_app_info.filename, '.');
+    if (p && !strcasecmp(p, ".exe"))
+        *p = '\0';
+
+    TRACE("Soju: exe_path=%s, filename=%s\n",
+          g_soju_app_info.exe_path, g_soju_app_info.filename);
+
+    g_soju_app_info.initialized = TRUE;
+}
+
+
+/***********************************************************************
  *              macdrv_init
  */
 static NTSTATUS macdrv_init(void *arg)
@@ -428,6 +488,9 @@ static NTSTATUS macdrv_init(void *arg)
     struct init_params *params = arg;
     SessionAttributeBits attributes;
     OSStatus status;
+
+    /* [Soju] Initialize app info before starting Cocoa (Fallback용) */
+    init_soju_app_info();
 
     app_icon_callback = params->app_icon_callback;
     app_quit_request_callback = params->app_quit_request_callback;

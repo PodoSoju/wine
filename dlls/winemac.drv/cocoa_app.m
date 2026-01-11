@@ -22,6 +22,43 @@
 #import "cocoa_cursorclipping.h"
 #import "cocoa_event.h"
 #import "cocoa_window.h"
+#import <CommonCrypto/CommonDigest.h>
+
+/* [Soju] Access to app info from macdrv_main.c (Fallback용) */
+struct soju_app_info {
+    char exe_path[1024];    /* Windows path: C:\path\to\app.exe */
+    char filename[256];     /* Filename without extension */
+    int initialized;
+};
+extern struct soju_app_info g_soju_app_info;
+
+/* [Soju] Convert Windows path to Unix path using WINEPREFIX */
+static NSString* soju_windows_to_unix_path(const char* winPath)
+{
+    if (!winPath || !winPath[0]) return nil;
+
+    const char* winePrefix = getenv("WINEPREFIX");
+    if (!winePrefix) return nil;
+
+    NSString* path = [NSString stringWithUTF8String:winPath];
+    NSString* prefix = [NSString stringWithUTF8String:winePrefix];
+
+    /* Handle drive letter (C:, D:, etc.) */
+    if ([path length] >= 2 && [path characterAtIndex:1] == ':')
+    {
+        unichar drive = [[path lowercaseString] characterAtIndex:0];
+        NSString* drivePath = [NSString stringWithFormat:@"drive_%c", drive];
+        NSString* remainder = [[path substringFromIndex:2] stringByReplacingOccurrencesOfString:@"\\" withString:@"/"];
+        path = [[prefix stringByAppendingPathComponent:drivePath] stringByAppendingPathComponent:remainder];
+    }
+    else
+    {
+        /* UNC or relative path - just replace backslashes */
+        path = [path stringByReplacingOccurrencesOfString:@"\\" withString:@"/"];
+    }
+
+    return path;
+}
 
 #pragma GCC diagnostic ignored "-Wdeclaration-after-statement"
 
@@ -155,6 +192,121 @@ static NSString* WineLocalizedString(unsigned int stringID)
         self = [super init];
         if (self != nil)
         {
+            /* ========== [Soju] Debug Logging ========== */
+            NSLog(@"[Soju] ========== Environment Debug ==========");
+            NSLog(@"[Soju] SOJU_APP_NAME: %s", getenv("SOJU_APP_NAME") ?: "(null)");
+            NSLog(@"[Soju] SOJU_APP_PATH: %s", getenv("SOJU_APP_PATH") ?: "(null)");
+            NSLog(@"[Soju] SOJU_WORKSPACE_ID: %s", getenv("SOJU_WORKSPACE_ID") ?: "(null)");
+            NSLog(@"[Soju] WINEPREFIX: %s", getenv("WINEPREFIX") ?: "(null)");
+
+            /* ========== [Soju] App Name & Path Resolution ========== */
+            NSString* appName = nil;
+            NSString* exePath = nil;
+            NSString* sourceUsed = @"default";
+
+            /* Priority 1: SOJU_APP_NAME env var */
+            const char* sojuAppName = getenv("SOJU_APP_NAME");
+            if (sojuAppName && sojuAppName[0])
+            {
+                appName = [NSString stringWithUTF8String:sojuAppName];
+                sourceUsed = @"SOJU_APP_NAME";
+            }
+
+            /* Priority 2: SOJU_APP_PATH env var */
+            const char* sojuAppPath = getenv("SOJU_APP_PATH");
+            if (sojuAppPath && sojuAppPath[0])
+            {
+                exePath = [NSString stringWithUTF8String:sojuAppPath];
+                if (!appName || ![appName length])
+                {
+                    appName = [[exePath lastPathComponent] stringByDeletingPathExtension];
+                    sourceUsed = @"SOJU_APP_PATH";
+                }
+            }
+
+            /* Priority 3: Wine internal path (Fallback) */
+            if (!exePath || ![exePath length])
+            {
+                if (g_soju_app_info.initialized && g_soju_app_info.exe_path[0])
+                {
+                    NSLog(@"[Soju] Fallback: Using Wine internal path");
+                    NSLog(@"[Soju] Wine exe_path: %s", g_soju_app_info.exe_path);
+                    exePath = soju_windows_to_unix_path(g_soju_app_info.exe_path);
+                    NSLog(@"[Soju] Converted to: %@", exePath ?: @"(null)");
+
+                    if ((!appName || ![appName length]) && exePath)
+                    {
+                        appName = [[exePath lastPathComponent] stringByDeletingPathExtension];
+                        sourceUsed = @"Wine fallback";
+                    }
+                }
+            }
+
+            /* Priority 4: Default */
+            if (!appName || ![appName length])
+                appName = @"SOJU APP";
+
+            NSLog(@"[Soju] ========== Resolution ==========");
+            NSLog(@"[Soju] Source: %@", sourceUsed);
+            NSLog(@"[Soju] appName: %@", appName);
+            NSLog(@"[Soju] exePath: %@", exePath ?: @"(null)");
+            if (exePath)
+                NSLog(@"[Soju] File exists: %@",
+                      [[NSFileManager defaultManager] fileExistsAtPath:exePath] ? @"YES" : @"NO");
+
+            /* Set Dock title */
+            [[NSProcessInfo processInfo] setValue:appName forKey:@"processName"];
+
+            /* ========== [Soju] Icon extraction & sojuId generation ========== */
+            NSString* sojuId = @"soju-unknown";
+            if (exePath && [[NSFileManager defaultManager] fileExistsAtPath:exePath])
+            {
+                NSData* fileData = [NSData dataWithContentsOfFile:exePath];
+                if (fileData)
+                {
+                    unsigned char hash[CC_SHA1_DIGEST_LENGTH];
+                    CC_SHA1(fileData.bytes, (CC_LONG)fileData.length, hash);
+                    NSString* sha1 = [NSString stringWithFormat:@"%02x%02x%02x%02x",
+                                      hash[0], hash[1], hash[2], hash[3]];
+                    NSString* filename = [[exePath lastPathComponent] stringByDeletingPathExtension];
+                    sojuId = [NSString stringWithFormat:@"soju-%@-%@", [filename lowercaseString], sha1];
+                }
+            }
+            NSLog(@"[Soju] sojuId: %@", sojuId);
+
+            /* Write running app info JSON */
+            const char* winePrefix = getenv("WINEPREFIX");
+            if (winePrefix)
+            {
+                NSString* prefixPath = [NSString stringWithUTF8String:winePrefix];
+                NSString* sojuDir = [prefixPath stringByAppendingPathComponent:@".soju/running"];
+                [[NSFileManager defaultManager] createDirectoryAtPath:sojuDir
+                                          withIntermediateDirectories:YES attributes:nil error:nil];
+
+                NSString* jsonPath = [sojuDir stringByAppendingPathComponent:
+                                      [NSString stringWithFormat:@"%@.json", sojuId]];
+
+                NSDateFormatter* fmt = [[NSDateFormatter alloc] init];
+                [fmt setDateFormat:@"yyyy-MM-dd HH:mm:ss Z"];
+                NSString* timestamp = [fmt stringFromDate:[NSDate date]];
+                [fmt release];
+
+                NSDictionary* info = @{
+                    @"id": sojuId,
+                    @"filename": appName,
+                    @"exe_path": exePath ?: @"",
+                    @"icon_path": [NSString stringWithFormat:@".soju/icons/%@.png", sojuId],
+                    @"pid": @(getpid()),
+                    @"started": timestamp
+                };
+
+                NSData* jsonData = [NSJSONSerialization dataWithJSONObject:info
+                                                                   options:NSJSONWritingPrettyPrinted error:nil];
+                [jsonData writeToFile:jsonPath atomically:YES];
+                NSLog(@"[Soju] Wrote running info: %@", jsonPath);
+            }
+            NSLog(@"[Soju] =====================================");
+
             CFRunLoopSourceContext context = { 0 };
             context.perform = PerformRequest;
             requestSource = CFRunLoopSourceCreate(NULL, 0, &context);
