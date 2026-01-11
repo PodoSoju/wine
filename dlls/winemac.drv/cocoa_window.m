@@ -24,6 +24,7 @@
 #import <CoreVideo/CoreVideo.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/QuartzCore.h>
+#import <CommonCrypto/CommonDigest.h>
 #include <dlfcn.h>
 
 #import "cocoa_window.h"
@@ -1051,14 +1052,30 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         if (exePath)
         {
             NSString* fullPath = [NSString stringWithUTF8String:exePath];
-            NSString* identifier = [[fullPath lastPathComponent] stringByDeletingPathExtension];  // 파일명만, 확장자 제거
+            NSString* filename = [[fullPath lastPathComponent] stringByDeletingPathExtension];
+
+            /* Generate SHA1 hash of executable for unique identifier */
+            NSData* fileData = [NSData dataWithContentsOfFile:fullPath];
+            NSString* identifier;
+            if (fileData)
+            {
+                unsigned char hash[CC_SHA1_DIGEST_LENGTH];
+                CC_SHA1(fileData.bytes, (CC_LONG)fileData.length, hash);
+                identifier = [NSString stringWithFormat:@"soju-%@-%02x%02x%02x%02x",
+                              filename, hash[0], hash[1], hash[2], hash[3]];
+            }
+            else
+            {
+                /* File not readable, use filename only */
+                identifier = [NSString stringWithFormat:@"soju-%@", filename];
+            }
             [window setIdentifier:identifier];
             NSLog(@"[Soju] Window identifier set to: %@", identifier);
         }
         else
         {
             /* Fallback: unique identifier using UUID */
-            NSString* identifier = [NSString stringWithFormat:@"wine-%@", [[NSUUID UUID] UUIDString]];
+            NSString* identifier = [NSString stringWithFormat:@"soju-%@", [[NSUUID UUID] UUIDString]];
             [window setIdentifier:identifier];
             NSLog(@"[Soju] No SOJU_EXE_PATH, using fallback: %@", identifier);
         }
