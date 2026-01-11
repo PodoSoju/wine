@@ -22,6 +22,7 @@
 #import <ApplicationServices/ApplicationServices.h>
 #include <mach/mach.h>
 #include <mach/mach_time.h>
+#include <limits.h>
 
 #include "macdrv_cocoa.h"
 #import "cocoa_app.h"
@@ -74,6 +75,28 @@ static void run_cocoa_app(void* info)
             /* [Soju] Set activation policy BEFORE creating NSApplication to prevent Dock tile */
             const char* hideDockEnv = getenv("SOJU_HIDE_DOCK");
             int hideDockMode = hideDockEnv ? atoi(hideDockEnv) : 0;
+
+            /* If env var not set, try reading from WINEPREFIX/.soju/hide_dock */
+            if (hideDockMode == 0)
+            {
+                const char* wineprefix = getenv("WINEPREFIX");
+                if (wineprefix)
+                {
+                    char hideDockPath[PATH_MAX];
+                    snprintf(hideDockPath, sizeof(hideDockPath), "%s/.soju/hide_dock", wineprefix);
+                    FILE* f = fopen(hideDockPath, "r");
+                    if (f)
+                    {
+                        char buf[16];
+                        if (fgets(buf, sizeof(buf), f))
+                            hideDockMode = atoi(buf);
+                        fclose(f);
+                        if (hideDockMode > 0)
+                            NSLog(@"[Soju] Read hide_dock=%d from file", hideDockMode);
+                    }
+                }
+            }
+
             if (hideDockMode > 0)
             {
                 /* Pre-create a temporary NSApplication to set policy, then replace */
