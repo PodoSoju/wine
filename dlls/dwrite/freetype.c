@@ -112,11 +112,13 @@ static BOOL freetype_glyph_has_contours(FT_Face face)
     return face->glyph->format == FT_GLYPH_FORMAT_OUTLINE && face->glyph->outline.n_contours;
 }
 
+#include "wine/dlopen_bundled.h"
+
 static NTSTATUS process_attach(void *args)
 {
     FT_Version_t FT_Version;
 
-    ft_handle = dlopen(SONAME_LIBFREETYPE, RTLD_NOW);
+    ft_handle = DLOPEN_BUNDLED_OR_SYSTEM("libfreetype.6.dylib", SONAME_LIBFREETYPE);
     if (!ft_handle)
     {
         WINE_MESSAGE("Wine cannot find the FreeType font library.\n");

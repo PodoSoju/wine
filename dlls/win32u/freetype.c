@@ -1452,10 +1452,11 @@ static void load_mac_fonts(void)
 
 #endif
 
+#include "wine/dlopen_bundled.h"
 
 static BOOL init_freetype(void)
 {
-    ft_handle = dlopen(SONAME_LIBFREETYPE, RTLD_NOW);
+    ft_handle = DLOPEN_BUNDLED_OR_SYSTEM("libfreetype.6.dylib", SONAME_LIBFREETYPE);
     if(!ft_handle) {
         WINE_MESSAGE(
       "Wine cannot find the FreeType font library.  To enable Wine to\n"

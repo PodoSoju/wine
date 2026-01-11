@@ -47,6 +47,7 @@
 #include "bcrypt_internal.h"
 
 #include "wine/debug.h"
+#include "wine/dlopen_bundled.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(bcrypt);
 WINE_DECLARE_DEBUG_CHANNEL(winediag);
@@ -383,7 +384,7 @@ static NTSTATUS gnutls_process_attach( void *args )
         setenv("GNUTLS_SYSTEM_PRIORITY_FILE", "/dev/null", 0);
     }
 
-    if (!(libgnutls_handle = dlopen( SONAME_LIBGNUTLS, RTLD_NOW )))
+    if (!(libgnutls_handle = DLOPEN_BUNDLED_OR_SYSTEM("libgnutls.30.dylib", SONAME_LIBGNUTLS)))
     {
         ERR_(winediag)( "failed to load libgnutls, no support for encryption\n" );
         return STATUS_DLL_NOT_FOUND;

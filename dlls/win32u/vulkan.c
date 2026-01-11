@@ -32,6 +32,7 @@
 #define WIN32_NO_STATUS
 #include "win32u_private.h"
 #include "ntuser_private.h"
+#include "wine/dlopen_bundled.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(vulkan);
 
@@ -3002,7 +3003,7 @@ static void vulkan_init_once(void)
     VkResult res;
 
 #ifdef SONAME_LIBVULKAN
-    vulkan_handle = dlopen( SONAME_LIBVULKAN, RTLD_NOW );
+    vulkan_handle = DLOPEN_BUNDLED_OR_SYSTEM("libMoltenVK.dylib", SONAME_LIBVULKAN);
     if (!vulkan_handle) ERR( "Failed to load %s\n", SONAME_LIBVULKAN );
 #else
     ERR( "Wine was built without Vulkan support.\n" );
