@@ -48,7 +48,6 @@
 
 #include "wine/unixlib.h"
 #include "wine/debug.h"
-#include "wine/dlopen_bundled.h"
 
 #if defined(SONAME_LIBGNUTLS)
 
@@ -1477,7 +1476,7 @@ static NTSTATUS process_attach( void *args )
         setenv("GNUTLS_SYSTEM_PRIORITY_FILE", "/dev/null", 0);
     }
 
-    libgnutls_handle = DLOPEN_BUNDLED_OR_SYSTEM("libgnutls.30.dylib", SONAME_LIBGNUTLS);
+    libgnutls_handle = dlopen(SONAME_LIBGNUTLS, RTLD_NOW);
     if (!libgnutls_handle)
     {
         ERR_(winediag)("Failed to load libgnutls, secure connections will not be available.\n");

@@ -53,7 +53,6 @@
 #include "wine/debug.h"
 #include "wine/hid.h"
 #include "wine/unixlib.h"
-#include "wine/dlopen_bundled.h"
 
 #include "unix_private.h"
 
@@ -1082,7 +1081,7 @@ NTSTATUS sdl_bus_init(void *args)
 
     options = (struct bus_options *)args;
 
-    if (!(sdl_handle = DLOPEN_BUNDLED_OR_SYSTEM("libSDL2-2.0.0.dylib", SONAME_LIBSDL2)))
+    if (!(sdl_handle = dlopen(SONAME_LIBSDL2, RTLD_NOW)))
     {
         WARN("could not load %s\n", SONAME_LIBSDL2);
         return STATUS_UNSUCCESSFUL;
