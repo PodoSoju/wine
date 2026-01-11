@@ -382,7 +382,11 @@ static NSString* WineLocalizedString(unsigned int stringID)
             NSString* title;
             NSMenuItem* item;
 
-            [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+            /* [Soju] Hide from Dock if SOJU_HIDE_DOCK is set (PodoJuice wrapper shows instead) */
+            if (getenv("SOJU_HIDE_DOCK"))
+                [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+            else
+                [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 
             if (activateIfTransformed)
                 [self tryToActivateIgnoringOtherApps:YES];
