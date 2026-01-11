@@ -202,7 +202,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
             NSLog(@"[Soju] WINEPREFIX: %s", getenv("WINEPREFIX") ?: "(null)");
 
             /* [Soju] Save SOJU_HIDE_DOCK for later use (env may not be available in child processes) */
-            sojuHideDock = (getenv("SOJU_HIDE_DOCK") != NULL);
+            self.sojuHideDock = (getenv("SOJU_HIDE_DOCK") != NULL);
 
             /* ========== [Soju] App Name & Path Resolution ========== */
             NSString* appName = nil;
