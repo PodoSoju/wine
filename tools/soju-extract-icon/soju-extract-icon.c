@@ -3,9 +3,11 @@
  *
  * Pure C, no dependencies, works on Unix/Linux/macOS
  *
- * Usage: soju-extract-icon <input.exe> <output.png>
+ * Usage: soju-extract-icon <input.exe> <output.png|ico>
  *
- * Output: PNG file (direct extraction if icon is PNG, otherwise ICO wrapper)
+ * Output format is determined by file extension:
+ *   .png - PNG format (direct if available, error if BMP only)
+ *   .ico - ICO format (always works)
  */
 
 #include <stdio.h>
@@ -388,7 +390,20 @@ int main(int argc, char **argv)
 
     /* Check if icon data is already PNG (magic: 0x89 PNG) */
     static const uint8_t png_magic[] = { 0x89, 0x50, 0x4E, 0x47 };
-    int is_png = (icon_size >= 4 && memcmp(icon_bits, png_magic, 4) == 0);
+    int is_png_data = (icon_size >= 4 && memcmp(icon_bits, png_magic, 4) == 0);
+
+    /* Determine output format from extension */
+    const char *ext = strrchr(argv[2], '.');
+    int want_png = (ext && (strcmp(ext, ".png") == 0 || strcmp(ext, ".PNG") == 0));
+    int want_ico = (ext && (strcmp(ext, ".ico") == 0 || strcmp(ext, ".ICO") == 0));
+
+    if (!want_png && !want_ico) {
+        fprintf(stderr, "Error: Output must be .png or .ico\n");
+        free(g_rsrc_data);
+        free(sections);
+        fclose(g_file);
+        return 1;
+    }
 
     FILE *outfile = fopen(argv[2], "wb");
     if (!outfile) {
@@ -399,20 +414,31 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    if (is_png) {
-        /* Icon is already PNG - write directly */
-        fwrite(icon_bits, 1, icon_size, outfile);
-        fclose(outfile);
-        printf("PNG icon saved to %s\n", argv[2]);
+    if (want_png) {
+        if (is_png_data) {
+            /* Icon is PNG - write directly */
+            fwrite(icon_bits, 1, icon_size, outfile);
+            fclose(outfile);
+            printf("PNG icon saved to %s (%dx%d)\n", argv[2],
+                   icon_dir->idEntries[best_idx].bWidth ? icon_dir->idEntries[best_idx].bWidth : 256,
+                   icon_dir->idEntries[best_idx].bHeight ? icon_dir->idEntries[best_idx].bHeight : 256);
+        } else {
+            fclose(outfile);
+            remove(argv[2]);
+            fprintf(stderr, "Error: Icon is BMP format, cannot output PNG directly.\n");
+            fprintf(stderr, "Use .ico extension and convert with: sips -s format png input.ico --out output.png\n");
+            free(g_rsrc_data);
+            free(sections);
+            fclose(g_file);
+            return 1;
+        }
     } else {
-        /* Icon is BMP/DIB format - wrap in ICO */
-        /* ICO header */
+        /* Write ICO format */
         uint16_t ico_reserved = 0, ico_type = 1, ico_count = 1;
         fwrite(&ico_reserved, 2, 1, outfile);
         fwrite(&ico_type, 2, 1, outfile);
         fwrite(&ico_count, 2, 1, outfile);
 
-        /* ICO directory entry */
         ICONDIRENTRY ico_entry = {
             .bWidth = icon_dir->idEntries[best_idx].bWidth,
             .bHeight = icon_dir->idEntries[best_idx].bHeight,
@@ -424,11 +450,12 @@ int main(int argc, char **argv)
             .dwImageOffset = 6 + sizeof(ICONDIRENTRY)
         };
         fwrite(&ico_entry, sizeof(ico_entry), 1, outfile);
-
-        /* Icon data */
         fwrite(icon_bits, 1, icon_size, outfile);
         fclose(outfile);
-        printf("ICO icon saved to %s (BMP format, use sips to convert)\n", argv[2]);
+        printf("ICO icon saved to %s (%dx%d, %s format)\n", argv[2],
+               icon_dir->idEntries[best_idx].bWidth ? icon_dir->idEntries[best_idx].bWidth : 256,
+               icon_dir->idEntries[best_idx].bHeight ? icon_dir->idEntries[best_idx].bHeight : 256,
+               is_png_data ? "PNG" : "BMP");
     }
 
     free(g_rsrc_data);
