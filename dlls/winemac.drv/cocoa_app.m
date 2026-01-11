@@ -41,6 +41,34 @@ struct soju_app_info {
 };
 extern struct soju_app_info g_soju_app_info;
 
+/* Convert Windows path to Unix path using WINEPREFIX */
+static NSString* soju_windows_to_unix_path(const char* winPath)
+{
+    if (!winPath || !winPath[0]) return nil;
+
+    const char* winePrefix = getenv("WINEPREFIX");
+    if (!winePrefix) return nil;
+
+    NSString* path = [NSString stringWithUTF8String:winPath];
+    NSString* prefix = [NSString stringWithUTF8String:winePrefix];
+
+    /* Handle drive letter (C:, D:, etc.) */
+    if ([path length] >= 2 && [path characterAtIndex:1] == ':')
+    {
+        unichar drive = [[path lowercaseString] characterAtIndex:0];
+        NSString* drivePath = [NSString stringWithFormat:@"drive_%c", drive];
+        NSString* remainder = [[path substringFromIndex:2] stringByReplacingOccurrencesOfString:@"\\" withString:@"/"];
+        path = [[prefix stringByAppendingPathComponent:drivePath] stringByAppendingPathComponent:remainder];
+    }
+    else
+    {
+        /* UNC or relative path - just replace backslashes */
+        path = [path stringByReplacingOccurrencesOfString:@"\\" withString:@"/"];
+    }
+
+    return path;
+}
+
 #pragma GCC diagnostic ignored "-Wdeclaration-after-statement"
 
 
@@ -195,8 +223,8 @@ static NSString* WineLocalizedString(unsigned int stringID)
             NSString* sojuId = @"soju-unknown";
             if (g_soju_app_info.initialized && g_soju_app_info.exe_path[0])
             {
-                NSString* exePath = [NSString stringWithUTF8String:g_soju_app_info.exe_path];
-                NSData* fileData = [NSData dataWithContentsOfFile:exePath];
+                NSString* exePath = soju_windows_to_unix_path(g_soju_app_info.exe_path);
+                NSData* fileData = exePath ? [NSData dataWithContentsOfFile:exePath] : nil;
                 if (fileData)
                 {
                     unsigned char hash[CC_SHA1_DIGEST_LENGTH];
@@ -1244,8 +1272,8 @@ static NSString* WineLocalizedString(unsigned int stringID)
                 NSString* sojuId = @"soju-unknown";
                 if (g_soju_app_info.exe_path[0])
                 {
-                    NSString* exePath = [NSString stringWithUTF8String:g_soju_app_info.exe_path];
-                    NSData* fileData = [NSData dataWithContentsOfFile:exePath];
+                    NSString* exePath = soju_windows_to_unix_path(g_soju_app_info.exe_path);
+                    NSData* fileData = exePath ? [NSData dataWithContentsOfFile:exePath] : nil;
                     if (fileData)
                     {
                         unsigned char hash[CC_SHA1_DIGEST_LENGTH];
