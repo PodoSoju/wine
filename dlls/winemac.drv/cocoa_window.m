@@ -34,6 +34,23 @@
 #import "cocoa_event.h"
 #import "cocoa_opengl.h"
 
+/* Access to Soju app info from macdrv_main.c */
+struct soju_app_info {
+    char exe_path[1024];
+    char filename[1024];
+    char sha1[41];
+    char file_description[256];
+    char file_version[256];
+    char product_name[256];
+    char product_version[256];
+    char company_name[256];
+    char copyright[256];
+    char original_filename[256];
+    char internal_name[256];
+    int initialized;
+};
+extern struct soju_app_info g_soju_app_info;
+
 #pragma GCC diagnostic ignored "-Wdeclaration-after-statement"
 
 
@@ -1047,38 +1064,38 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         window->resizable = wf->resizable;
         window->_lastDisplayTime = [[NSDate distantPast] timeIntervalSinceReferenceDate];
 
-        /* Set window identifier from SOJU_EXE_PATH for PodoSoju integration */
-        const char* exePath = getenv("SOJU_EXE_PATH");
-        if (exePath)
+        /* Set window identifier from g_soju_app_info for PodoSoju integration */
+        NSString* identifier = nil;
+        if (g_soju_app_info.initialized && g_soju_app_info.exe_path[0])
         {
-            NSString* fullPath = [NSString stringWithUTF8String:exePath];
-            NSString* filename = [[fullPath lastPathComponent] stringByDeletingPathExtension];
+            NSString* fullPath = [NSString stringWithUTF8String:g_soju_app_info.exe_path];
+            NSString* filename = g_soju_app_info.filename[0] ?
+                [NSString stringWithUTF8String:g_soju_app_info.filename] : @"app";
 
             /* Generate SHA1 hash of executable for unique identifier */
             NSData* fileData = [NSData dataWithContentsOfFile:fullPath];
-            NSString* identifier;
             if (fileData)
             {
                 unsigned char hash[CC_SHA1_DIGEST_LENGTH];
                 CC_SHA1(fileData.bytes, (CC_LONG)fileData.length, hash);
-                identifier = [NSString stringWithFormat:@"soju-%@-%02x%02x%02x%02x",
-                              filename, hash[0], hash[1], hash[2], hash[3]];
+                identifier = [NSString stringWithFormat:@"soju-%@-%02x%02x%02x%02x%02x%02x%02x%02x",
+                              filename, hash[0], hash[1], hash[2], hash[3],
+                              hash[4], hash[5], hash[6], hash[7]];
             }
             else
             {
                 /* File not readable, use filename only */
                 identifier = [NSString stringWithFormat:@"soju-%@", filename];
             }
-            [window setIdentifier:identifier];
-            NSLog(@"[Soju] Window identifier set to: %@", identifier);
         }
-        else
+        if (!identifier)
         {
             /* Fallback: unique identifier using UUID */
-            NSString* identifier = [NSString stringWithFormat:@"soju-%@", [[NSUUID UUID] UUIDString]];
-            [window setIdentifier:identifier];
-            NSLog(@"[Soju] No SOJU_EXE_PATH, using fallback: %@", identifier);
+            identifier = [NSString stringWithFormat:@"soju-%@", [[NSUUID UUID] UUIDString]];
+            NSLog(@"[Soju] No app info, using fallback identifier");
         }
+        [window setIdentifier:identifier];
+        NSLog(@"[Soju] Window identifier set to: %@", identifier);
 
         /* Tabbing: group windows by workspace */
         const char* workspaceId = getenv("SOJU_WORKSPACE_ID");

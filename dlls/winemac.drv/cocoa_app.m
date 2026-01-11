@@ -22,6 +22,24 @@
 #import "cocoa_cursorclipping.h"
 #import "cocoa_event.h"
 #import "cocoa_window.h"
+#import <CommonCrypto/CommonDigest.h>
+
+/* Access to Soju app info from macdrv_main.c */
+struct soju_app_info {
+    char exe_path[1024];
+    char filename[1024];
+    char sha1[41];
+    char file_description[256];
+    char file_version[256];
+    char product_name[256];
+    char product_version[256];
+    char company_name[256];
+    char copyright[256];
+    char original_filename[256];
+    char internal_name[256];
+    int initialized;
+};
+extern struct soju_app_info g_soju_app_info;
 
 #pragma GCC diagnostic ignored "-Wdeclaration-after-statement"
 
@@ -155,23 +173,48 @@ static NSString* WineLocalizedString(unsigned int stringID)
         self = [super init];
         if (self != nil)
         {
-            // Set process name from SOJU_EXE_PATH for Dock display
-            const char* sojuExePath = getenv("SOJU_EXE_PATH");
-            if (sojuExePath && *sojuExePath)
+            // [Soju] Set process name for Dock display
+            // Priority: ProductName > FileDescription > filename > "wine"
+            NSString* appName = nil;
+            if (g_soju_app_info.initialized)
             {
-                NSString* exePath = [NSString stringWithUTF8String:sojuExePath];
-                NSString* appName = [[exePath lastPathComponent] stringByDeletingPathExtension];
-                if ([appName length])
+                if (g_soju_app_info.product_name[0])
+                    appName = [NSString stringWithUTF8String:g_soju_app_info.product_name];
+                else if (g_soju_app_info.file_description[0])
+                    appName = [NSString stringWithUTF8String:g_soju_app_info.file_description];
+                else if (g_soju_app_info.filename[0])
+                    appName = [NSString stringWithUTF8String:g_soju_app_info.filename];
+            }
+            if (!appName || ![appName length])
+                appName = @"wine";
+
+            [[NSProcessInfo processInfo] setValue:appName forKey:@"processName"];
+            NSLog(@"[Soju] Process name set to: %@", appName);
+
+            // [Soju] Compute SHA1 hash of exe file
+            NSString* sojuId = @"soju-unknown";
+            if (g_soju_app_info.initialized && g_soju_app_info.exe_path[0])
+            {
+                NSString* exePath = [NSString stringWithUTF8String:g_soju_app_info.exe_path];
+                NSData* fileData = [NSData dataWithContentsOfFile:exePath];
+                if (fileData)
                 {
-                    // Use private API to set process name (affects Dock display)
-                    [[NSProcessInfo processInfo] setValue:appName forKey:@"processName"];
-                    NSLog(@"[Soju] Process name set to: %@", appName);
+                    unsigned char hash[CC_SHA1_DIGEST_LENGTH];
+                    CC_SHA1(fileData.bytes, (CC_LONG)fileData.length, hash);
+                    NSString* sha1 = [NSString stringWithFormat:@"%02x%02x%02x%02x%02x%02x%02x%02x",
+                                      hash[0], hash[1], hash[2], hash[3],
+                                      hash[4], hash[5], hash[6], hash[7]];
+                    sojuId = [NSString stringWithFormat:@"soju-%@-%@",
+                              g_soju_app_info.filename[0] ?
+                                  [NSString stringWithUTF8String:g_soju_app_info.filename] : @"app",
+                              sha1];
                 }
             }
+            NSLog(@"[Soju] App ID: %@", sojuId);
 
-            // [Soju] Write running app info to .soju/running/{PID}.json
+            // [Soju] Write running app info to .soju/running/{soju-id}.json
             const char* winePrefix = getenv("WINEPREFIX");
-            if (sojuExePath && winePrefix)
+            if (g_soju_app_info.initialized && winePrefix)
             {
                 NSString* prefixPath = [NSString stringWithUTF8String:winePrefix];
                 NSString* sojuDir = [prefixPath stringByAppendingPathComponent:@".soju/running"];
@@ -182,19 +225,45 @@ static NSString* WineLocalizedString(unsigned int stringID)
                                                            attributes:nil
                                                                 error:nil];
 
-                // Write info file: {PID}.json
+                // Write info file: {soju-id}.json
                 pid_t currentPid = getpid();
                 NSString* filePath = [sojuDir stringByAppendingPathComponent:
-                                      [NSString stringWithFormat:@"%d.json", currentPid]];
+                                      [NSString stringWithFormat:@"%@.json", sojuId]];
 
-                NSDictionary* info = @{
-                    @"exe": [[NSString stringWithUTF8String:sojuExePath] lastPathComponent],
-                    @"path": [NSString stringWithUTF8String:sojuExePath],
-                    @"pid": @(currentPid),
-                    @"started": [[NSDate date] description]
-                };
+                NSMutableDictionary* info = [NSMutableDictionary dictionary];
+                info[@"id"] = sojuId;
+                info[@"pid"] = @(currentPid);
+                info[@"filename"] = g_soju_app_info.filename[0] ?
+                    [NSString stringWithUTF8String:g_soju_app_info.filename] : @"";
+                info[@"exe_path"] = g_soju_app_info.exe_path[0] ?
+                    [NSString stringWithUTF8String:g_soju_app_info.exe_path] : @"";
+                info[@"started"] = [[NSDate date] description];
 
-                NSData* jsonData = [NSJSONSerialization dataWithJSONObject:info options:0 error:nil];
+                // Version info
+                NSMutableDictionary* versionInfo = [NSMutableDictionary dictionary];
+                if (g_soju_app_info.file_description[0])
+                    versionInfo[@"file_description"] = [NSString stringWithUTF8String:g_soju_app_info.file_description];
+                if (g_soju_app_info.file_version[0])
+                    versionInfo[@"file_version"] = [NSString stringWithUTF8String:g_soju_app_info.file_version];
+                if (g_soju_app_info.product_name[0])
+                    versionInfo[@"product_name"] = [NSString stringWithUTF8String:g_soju_app_info.product_name];
+                if (g_soju_app_info.product_version[0])
+                    versionInfo[@"product_version"] = [NSString stringWithUTF8String:g_soju_app_info.product_version];
+                if (g_soju_app_info.company_name[0])
+                    versionInfo[@"company_name"] = [NSString stringWithUTF8String:g_soju_app_info.company_name];
+                if (g_soju_app_info.copyright[0])
+                    versionInfo[@"copyright"] = [NSString stringWithUTF8String:g_soju_app_info.copyright];
+                if (g_soju_app_info.original_filename[0])
+                    versionInfo[@"original_filename"] = [NSString stringWithUTF8String:g_soju_app_info.original_filename];
+                if (g_soju_app_info.internal_name[0])
+                    versionInfo[@"internal_name"] = [NSString stringWithUTF8String:g_soju_app_info.internal_name];
+
+                if ([versionInfo count] > 0)
+                    info[@"version_info"] = versionInfo;
+
+                NSData* jsonData = [NSJSONSerialization dataWithJSONObject:info
+                                                                   options:NSJSONWritingPrettyPrinted
+                                                                     error:nil];
                 [jsonData writeToFile:filePath atomically:YES];
 
                 NSLog(@"[Soju] Running app info written to: %@", filePath);

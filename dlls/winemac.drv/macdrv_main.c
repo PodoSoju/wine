@@ -62,6 +62,9 @@ bool enable_app_nap = false;
 UINT64 app_icon_callback = 0;
 UINT64 app_quit_request_callback = 0;
 
+/* Soju app info global instance */
+struct soju_app_info g_soju_app_info = {0};
+
 CFDictionaryRef localized_strings;
 
 
@@ -421,6 +424,111 @@ static void load_strings(struct localized_string *str)
 
 
 /***********************************************************************
+ *              init_soju_app_info
+ *
+ * Initialize Soju app info from Wine's internal structures.
+ * Gets exe path, version info, and computes SHA1 hash.
+ */
+static void init_soju_app_info(void)
+{
+    WCHAR *image_path;
+    WCHAR *filename_start;
+    char *p;
+    DWORD version_size;
+    void *version_data = NULL;
+
+    if (g_soju_app_info.initialized)
+        return;
+
+    /* Get exe path from Wine's ProcessParameters */
+    image_path = NtCurrentTeb()->Peb->ProcessParameters->ImagePathName.Buffer;
+    if (!image_path)
+    {
+        TRACE("No ImagePathName available\n");
+        return;
+    }
+
+    /* Convert to UTF-8 */
+    ntdll_wcstoumbs(image_path, wcslen(image_path) + 1,
+                    g_soju_app_info.exe_path, sizeof(g_soju_app_info.exe_path), FALSE);
+
+    /* Extract filename */
+    filename_start = wcsrchr(image_path, '\\');
+    if (!filename_start)
+        filename_start = wcsrchr(image_path, '/');
+    if (filename_start)
+        filename_start++;
+    else
+        filename_start = image_path;
+
+    ntdll_wcstoumbs(filename_start, wcslen(filename_start) + 1,
+                    g_soju_app_info.filename, sizeof(g_soju_app_info.filename), FALSE);
+
+    /* Remove .exe extension from filename for display */
+    p = strrchr(g_soju_app_info.filename, '.');
+    if (p && !strcasecmp(p, ".exe"))
+        *p = '\0';
+
+    TRACE("Soju exe_path: %s, filename: %s\n",
+          g_soju_app_info.exe_path, g_soju_app_info.filename);
+
+    /* Get version info */
+    version_size = GetFileVersionInfoSizeW(image_path, NULL);
+    if (version_size)
+    {
+        version_data = malloc(version_size);
+        if (version_data && GetFileVersionInfoW(image_path, 0, version_size, version_data))
+        {
+            WCHAR *str_value;
+            UINT str_len;
+
+            /* Try different language codes */
+            static const WCHAR *lang_codes[] = {
+                L"\\StringFileInfo\\040904b0\\",  /* US English, Unicode */
+                L"\\StringFileInfo\\040904e4\\",  /* US English, CP1252 */
+                L"\\StringFileInfo\\000004b0\\",  /* Neutral, Unicode */
+                NULL
+            };
+
+            for (int i = 0; lang_codes[i]; i++)
+            {
+                WCHAR query[256];
+
+                #define GET_VERSION_STRING(field, name) do { \
+                    swprintf(query, ARRAY_SIZE(query), L"%s" name, lang_codes[i]); \
+                    if (VerQueryValueW(version_data, query, (void**)&str_value, &str_len) && str_len > 0) { \
+                        ntdll_wcstoumbs(str_value, str_len, \
+                                        g_soju_app_info.field, sizeof(g_soju_app_info.field), FALSE); \
+                    } \
+                } while(0)
+
+                GET_VERSION_STRING(file_description, L"FileDescription");
+                GET_VERSION_STRING(file_version, L"FileVersion");
+                GET_VERSION_STRING(product_name, L"ProductName");
+                GET_VERSION_STRING(product_version, L"ProductVersion");
+                GET_VERSION_STRING(company_name, L"CompanyName");
+                GET_VERSION_STRING(copyright, L"LegalCopyright");
+                GET_VERSION_STRING(original_filename, L"OriginalFilename");
+                GET_VERSION_STRING(internal_name, L"InternalName");
+
+                #undef GET_VERSION_STRING
+
+                /* If we got at least one field, stop trying other languages */
+                if (g_soju_app_info.file_description[0] || g_soju_app_info.product_name[0])
+                    break;
+            }
+
+            TRACE("Soju version info: product_name=%s, file_description=%s\n",
+                  g_soju_app_info.product_name, g_soju_app_info.file_description);
+        }
+        free(version_data);
+    }
+
+    g_soju_app_info.initialized = TRUE;
+}
+
+
+/***********************************************************************
  *              macdrv_init
  */
 static NTSTATUS macdrv_init(void *arg)
@@ -428,6 +536,9 @@ static NTSTATUS macdrv_init(void *arg)
     struct init_params *params = arg;
     SessionAttributeBits attributes;
     OSStatus status;
+
+    /* Initialize Soju app info before starting Cocoa */
+    init_soju_app_info();
 
     app_icon_callback = params->app_icon_callback;
     app_quit_request_callback = params->app_quit_request_callback;

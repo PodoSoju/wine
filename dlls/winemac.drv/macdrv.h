@@ -46,6 +46,27 @@ extern BOOL allow_software_rendering;
 extern UINT64 app_icon_callback;
 extern UINT64 app_quit_request_callback;
 
+/* Soju app info - populated from Wine's ImagePathName and version resources */
+#define SOJU_MAX_PATH 1024
+#define SOJU_MAX_VERSION_STRING 256
+
+struct soju_app_info {
+    char exe_path[SOJU_MAX_PATH];           /* Full path to exe (UTF-8) */
+    char filename[SOJU_MAX_PATH];           /* Filename only */
+    char sha1[41];                          /* SHA1 hash (40 hex chars + null) */
+    char file_description[SOJU_MAX_VERSION_STRING];
+    char file_version[SOJU_MAX_VERSION_STRING];
+    char product_name[SOJU_MAX_VERSION_STRING];
+    char product_version[SOJU_MAX_VERSION_STRING];
+    char company_name[SOJU_MAX_VERSION_STRING];
+    char copyright[SOJU_MAX_VERSION_STRING];
+    char original_filename[SOJU_MAX_VERSION_STRING];
+    char internal_name[SOJU_MAX_VERSION_STRING];
+    BOOL initialized;
+};
+
+extern struct soju_app_info g_soju_app_info;
+
 extern const char* debugstr_cf(CFTypeRef t);
 
 static inline CGRect cgrect_from_rect(RECT rect)
