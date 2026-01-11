@@ -237,6 +237,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
                     [NSString stringWithUTF8String:g_soju_app_info.filename] : @"";
                 info[@"exe_path"] = g_soju_app_info.exe_path[0] ?
                     [NSString stringWithUTF8String:g_soju_app_info.exe_path] : @"";
+                info[@"icon_path"] = [NSString stringWithFormat:@".soju/icons/%@.png", sojuId];
                 info[@"started"] = [[NSDate date] description];
 
                 // Version info
@@ -1224,6 +1225,71 @@ static NSString* WineLocalizedString(unsigned int stringID)
         }
 
         self.applicationIcon = nsimage;
+
+        /* [Soju] Save icon to .soju/icons/{soju-id}.png */
+        if (nsimage && g_soju_app_info.initialized)
+        {
+            const char* winePrefix = getenv("WINEPREFIX");
+            if (winePrefix)
+            {
+                NSString* prefixPath = [NSString stringWithUTF8String:winePrefix];
+                NSString* iconsDir = [prefixPath stringByAppendingPathComponent:@".soju/icons"];
+
+                [[NSFileManager defaultManager] createDirectoryAtPath:iconsDir
+                                          withIntermediateDirectories:YES
+                                                           attributes:nil
+                                                                error:nil];
+
+                /* Generate soju ID for icon filename */
+                NSString* sojuId = @"soju-unknown";
+                if (g_soju_app_info.exe_path[0])
+                {
+                    NSString* exePath = [NSString stringWithUTF8String:g_soju_app_info.exe_path];
+                    NSData* fileData = [NSData dataWithContentsOfFile:exePath];
+                    if (fileData)
+                    {
+                        unsigned char hash[CC_SHA1_DIGEST_LENGTH];
+                        CC_SHA1(fileData.bytes, (CC_LONG)fileData.length, hash);
+                        NSString* filename = g_soju_app_info.filename[0] ?
+                            [NSString stringWithUTF8String:g_soju_app_info.filename] : @"app";
+                        sojuId = [NSString stringWithFormat:@"soju-%@-%02x%02x%02x%02x%02x%02x%02x%02x",
+                                  filename, hash[0], hash[1], hash[2], hash[3],
+                                  hash[4], hash[5], hash[6], hash[7]];
+                    }
+                }
+
+                NSString* iconPath = [iconsDir stringByAppendingPathComponent:
+                                      [NSString stringWithFormat:@"%@.png", sojuId]];
+
+                /* Convert NSImage to PNG data */
+                NSBitmapImageRep* rep = [[NSBitmapImageRep alloc]
+                                         initWithBitmapDataPlanes:NULL
+                                         pixelsWide:(NSInteger)nsimage.size.width
+                                         pixelsHigh:(NSInteger)nsimage.size.height
+                                         bitsPerSample:8
+                                         samplesPerPixel:4
+                                         hasAlpha:YES
+                                         isPlanar:NO
+                                         colorSpaceName:NSCalibratedRGBColorSpace
+                                         bytesPerRow:0
+                                         bitsPerPixel:0];
+
+                [NSGraphicsContext saveGraphicsState];
+                [NSGraphicsContext setCurrentContext:
+                    [NSGraphicsContext graphicsContextWithBitmapImageRep:rep]];
+                [nsimage drawInRect:NSMakeRect(0, 0, nsimage.size.width, nsimage.size.height)
+                           fromRect:NSZeroRect
+                          operation:NSCompositingOperationCopy
+                           fraction:1.0];
+                [NSGraphicsContext restoreGraphicsState];
+
+                NSData* pngData = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+                [pngData writeToFile:iconPath atomically:YES];
+                [rep release];
+
+                NSLog(@"[Soju] Icon saved to: %@", iconPath);
+            }
+        }
     }
 
     - (void) handleCommandTab
