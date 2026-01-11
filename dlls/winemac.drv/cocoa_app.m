@@ -155,6 +155,20 @@ static NSString* WineLocalizedString(unsigned int stringID)
         self = [super init];
         if (self != nil)
         {
+            // Set process name from SOJU_EXE_PATH for Dock display
+            const char* sojuExePath = getenv("SOJU_EXE_PATH");
+            if (sojuExePath && *sojuExePath)
+            {
+                NSString* exePath = [NSString stringWithUTF8String:sojuExePath];
+                NSString* appName = [[exePath lastPathComponent] stringByDeletingPathExtension];
+                if ([appName length])
+                {
+                    // Use private API to set process name (affects Dock display)
+                    [[NSProcessInfo processInfo] setValue:appName forKey:@"processName"];
+                    NSLog(@"[Soju] Process name set to: %@", appName);
+                }
+            }
+
             CFRunLoopSourceContext context = { 0 };
             context.perform = PerformRequest;
             requestSource = CFRunLoopSourceCreate(NULL, 0, &context);
