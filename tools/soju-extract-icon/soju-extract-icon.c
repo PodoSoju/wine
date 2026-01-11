@@ -3,9 +3,9 @@
  *
  * Pure C, no dependencies, works on Unix/Linux/macOS
  *
- * Usage: soju-extract-icon <input.exe> <output.ico>
+ * Usage: soju-extract-icon <input.exe> <output.png>
  *
- * Output: ICO file (can be converted to PNG with ImageMagick, sips, etc.)
+ * Output: PNG file (direct extraction if icon is PNG, otherwise ICO wrapper)
  */
 
 #include <stdio.h>
@@ -386,7 +386,10 @@ int main(int argc, char **argv)
     uint8_t *icon_bits = g_rsrc_data + (icon_data->OffsetToData - g_rsrc_rva);
     uint32_t icon_size = icon_data->Size;
 
-    /* Write ICO file */
+    /* Check if icon data is already PNG (magic: 0x89 PNG) */
+    static const uint8_t png_magic[] = { 0x89, 0x50, 0x4E, 0x47 };
+    int is_png = (icon_size >= 4 && memcmp(icon_bits, png_magic, 4) == 0);
+
     FILE *outfile = fopen(argv[2], "wb");
     if (!outfile) {
         fprintf(stderr, "Error: Cannot create %s\n", argv[2]);
@@ -396,30 +399,37 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    /* ICO header */
-    uint16_t ico_reserved = 0, ico_type = 1, ico_count = 1;
-    fwrite(&ico_reserved, 2, 1, outfile);
-    fwrite(&ico_type, 2, 1, outfile);
-    fwrite(&ico_count, 2, 1, outfile);
+    if (is_png) {
+        /* Icon is already PNG - write directly */
+        fwrite(icon_bits, 1, icon_size, outfile);
+        fclose(outfile);
+        printf("PNG icon saved to %s\n", argv[2]);
+    } else {
+        /* Icon is BMP/DIB format - wrap in ICO */
+        /* ICO header */
+        uint16_t ico_reserved = 0, ico_type = 1, ico_count = 1;
+        fwrite(&ico_reserved, 2, 1, outfile);
+        fwrite(&ico_type, 2, 1, outfile);
+        fwrite(&ico_count, 2, 1, outfile);
 
-    /* ICO directory entry */
-    ICONDIRENTRY ico_entry = {
-        .bWidth = icon_dir->idEntries[best_idx].bWidth,
-        .bHeight = icon_dir->idEntries[best_idx].bHeight,
-        .bColorCount = icon_dir->idEntries[best_idx].bColorCount,
-        .bReserved = 0,
-        .wPlanes = icon_dir->idEntries[best_idx].wPlanes,
-        .wBitCount = icon_dir->idEntries[best_idx].wBitCount,
-        .dwBytesInRes = icon_size,
-        .dwImageOffset = 6 + sizeof(ICONDIRENTRY)
-    };
-    fwrite(&ico_entry, sizeof(ico_entry), 1, outfile);
+        /* ICO directory entry */
+        ICONDIRENTRY ico_entry = {
+            .bWidth = icon_dir->idEntries[best_idx].bWidth,
+            .bHeight = icon_dir->idEntries[best_idx].bHeight,
+            .bColorCount = icon_dir->idEntries[best_idx].bColorCount,
+            .bReserved = 0,
+            .wPlanes = icon_dir->idEntries[best_idx].wPlanes,
+            .wBitCount = icon_dir->idEntries[best_idx].wBitCount,
+            .dwBytesInRes = icon_size,
+            .dwImageOffset = 6 + sizeof(ICONDIRENTRY)
+        };
+        fwrite(&ico_entry, sizeof(ico_entry), 1, outfile);
 
-    /* Icon data */
-    fwrite(icon_bits, 1, icon_size, outfile);
-
-    fclose(outfile);
-    printf("Icon saved to %s\n", argv[2]);
+        /* Icon data */
+        fwrite(icon_bits, 1, icon_size, outfile);
+        fclose(outfile);
+        printf("ICO icon saved to %s (BMP format, use sips to convert)\n", argv[2]);
+    }
 
     free(g_rsrc_data);
     free(sections);
