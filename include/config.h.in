@@ -836,4 +836,60 @@
 /* Define to 1 on platforms where this makes time_t a 64-bit type. */
 #undef __MINGW_USE_VC2005_COMPAT
 
+/*
+ * macOS: Override dlopen to try bundled library path first.
+ * Wine bundles include libraries in lib/ relative to bin/.
+ * This allows Wine to load bundled FreeType, gnutls, etc.
+ *
+ * Strategy: Use RTLD_NEXT to get the real dlopen from dyld, avoiding
+ * any recursion issues with the macro redefinition.
+ */
+#if defined(__APPLE__)
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#include <dlfcn.h>
+#include <limits.h>
+#include <string.h>
+#include <stdio.h>
+#include <mach-o/dyld.h>
+
+static inline void* __wine_dlopen_bundled(const char* name, int flags)
+{
+    /* Use RTLD_NEXT to get the real dlopen - this bypasses our macro */
+    void* (*real_dlopen)(const char*, int) = dlsym(RTLD_NEXT, "dlopen");
+    if (!real_dlopen) {
+        /* Fallback: if RTLD_NEXT fails, use RTLD_DEFAULT but call it directly */
+        real_dlopen = dlsym(RTLD_DEFAULT, "dlopen");
+    }
+    if (!real_dlopen) return NULL;
+
+    /* Only intercept bare library names (no path separator) */
+    if (name && !strchr(name, '/'))
+    {
+        char exe_path[PATH_MAX];
+        char lib_path[PATH_MAX];
+        uint32_t size = sizeof(exe_path);
+
+        if (_NSGetExecutablePath(exe_path, &size) == 0)
+        {
+            /* Find the bin directory */
+            char* last_slash = strrchr(exe_path, '/');
+            if (last_slash)
+            {
+                *last_slash = '\0';
+                /* Try ../lib/ relative to executable */
+                snprintf(lib_path, sizeof(lib_path), "%s/../lib/%s", exe_path, name);
+                void* handle = real_dlopen(lib_path, flags);
+                if (handle) return handle;
+            }
+        }
+    }
+    return real_dlopen(name, flags);
+}
+
+/* Redefine dlopen after all includes to avoid macro expansion in headers */
+#define dlopen(name, flags) __wine_dlopen_bundled(name, flags)
+#endif /* __APPLE__ */
+
 #endif /* __WINE_CONFIG_H */
