@@ -169,6 +169,37 @@ static NSString* WineLocalizedString(unsigned int stringID)
                 }
             }
 
+            // [Soju] Write running app info to .soju/running/{PID}.json
+            const char* winePrefix = getenv("WINEPREFIX");
+            if (sojuExePath && winePrefix)
+            {
+                NSString* prefixPath = [NSString stringWithUTF8String:winePrefix];
+                NSString* sojuDir = [prefixPath stringByAppendingPathComponent:@".soju/running"];
+
+                // Create directory if not exists
+                [[NSFileManager defaultManager] createDirectoryAtPath:sojuDir
+                                          withIntermediateDirectories:YES
+                                                           attributes:nil
+                                                                error:nil];
+
+                // Write info file: {PID}.json
+                pid_t currentPid = getpid();
+                NSString* filePath = [sojuDir stringByAppendingPathComponent:
+                                      [NSString stringWithFormat:@"%d.json", currentPid]];
+
+                NSDictionary* info = @{
+                    @"exe": [[NSString stringWithUTF8String:sojuExePath] lastPathComponent],
+                    @"path": [NSString stringWithUTF8String:sojuExePath],
+                    @"pid": @(currentPid),
+                    @"started": [[NSDate date] description]
+                };
+
+                NSData* jsonData = [NSJSONSerialization dataWithJSONObject:info options:0 error:nil];
+                [jsonData writeToFile:filePath atomically:YES];
+
+                NSLog(@"[Soju] Running app info written to: %@", filePath);
+            }
+
             CFRunLoopSourceContext context = { 0 };
             context.perform = PerformRequest;
             requestSource = CFRunLoopSourceCreate(NULL, 0, &context);
@@ -212,6 +243,17 @@ static NSString* WineLocalizedString(unsigned int stringID)
 
     - (void) dealloc
     {
+        // [Soju] Remove running app info file on dealloc
+        const char* winePrefix = getenv("WINEPREFIX");
+        if (winePrefix)
+        {
+            NSString* prefixPath = [NSString stringWithUTF8String:winePrefix];
+            NSString* filePath = [prefixPath stringByAppendingPathComponent:
+                                  [NSString stringWithFormat:@".soju/running/%d.json", getpid()]];
+            [[NSFileManager defaultManager] removeItemAtPath:filePath error:nil];
+            NSLog(@"[Soju] Running app info removed: %@", filePath);
+        }
+
         [windowsBeingDragged release];
         [cursor release];
         [screenFrameCGRects release];
