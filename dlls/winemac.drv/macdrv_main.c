@@ -472,57 +472,7 @@ static void init_soju_app_info(void)
     TRACE("Soju exe_path: %s, filename: %s\n",
           g_soju_app_info.exe_path, g_soju_app_info.filename);
 
-    /* Get version info */
-    version_size = GetFileVersionInfoSizeW(image_path, NULL);
-    if (version_size)
-    {
-        version_data = malloc(version_size);
-        if (version_data && GetFileVersionInfoW(image_path, 0, version_size, version_data))
-        {
-            WCHAR *str_value;
-            UINT str_len;
-
-            /* Try different language codes */
-            static const WCHAR *lang_codes[] = {
-                L"\\StringFileInfo\\040904b0\\",  /* US English, Unicode */
-                L"\\StringFileInfo\\040904e4\\",  /* US English, CP1252 */
-                L"\\StringFileInfo\\000004b0\\",  /* Neutral, Unicode */
-                NULL
-            };
-
-            for (int i = 0; lang_codes[i]; i++)
-            {
-                WCHAR query[256];
-
-                #define GET_VERSION_STRING(field, name) do { \
-                    swprintf(query, ARRAY_SIZE(query), L"%s" name, lang_codes[i]); \
-                    if (VerQueryValueW(version_data, query, (void**)&str_value, &str_len) && str_len > 0) { \
-                        ntdll_wcstoumbs(str_value, str_len, \
-                                        g_soju_app_info.field, sizeof(g_soju_app_info.field), FALSE); \
-                    } \
-                } while(0)
-
-                GET_VERSION_STRING(file_description, L"FileDescription");
-                GET_VERSION_STRING(file_version, L"FileVersion");
-                GET_VERSION_STRING(product_name, L"ProductName");
-                GET_VERSION_STRING(product_version, L"ProductVersion");
-                GET_VERSION_STRING(company_name, L"CompanyName");
-                GET_VERSION_STRING(copyright, L"LegalCopyright");
-                GET_VERSION_STRING(original_filename, L"OriginalFilename");
-                GET_VERSION_STRING(internal_name, L"InternalName");
-
-                #undef GET_VERSION_STRING
-
-                /* If we got at least one field, stop trying other languages */
-                if (g_soju_app_info.file_description[0] || g_soju_app_info.product_name[0])
-                    break;
-            }
-
-            TRACE("Soju version info: product_name=%s, file_description=%s\n",
-                  g_soju_app_info.product_name, g_soju_app_info.file_description);
-        }
-        free(version_data);
-    }
+    /* Version info extraction removed - use soju-extract-icon tool instead */
 
     g_soju_app_info.initialized = TRUE;
 }

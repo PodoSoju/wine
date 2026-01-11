@@ -856,8 +856,15 @@
 
 static inline void* __wine_dlopen_bundled(const char* name, int flags)
 {
+    void* (*real_dlopen)(const char*, int);
+    void* handle;
+    char exe_path[PATH_MAX];
+    char lib_path[PATH_MAX];
+    uint32_t size;
+    char* last_slash;
+
     /* Use RTLD_NEXT to get the real dlopen - this bypasses our macro */
-    void* (*real_dlopen)(const char*, int) = dlsym(RTLD_NEXT, "dlopen");
+    real_dlopen = dlsym(RTLD_NEXT, "dlopen");
     if (!real_dlopen) {
         /* Fallback: if RTLD_NEXT fails, use RTLD_DEFAULT but call it directly */
         real_dlopen = dlsym(RTLD_DEFAULT, "dlopen");
@@ -867,21 +874,23 @@ static inline void* __wine_dlopen_bundled(const char* name, int flags)
     /* Only intercept bare library names (no path separator) */
     if (name && !strchr(name, '/'))
     {
-        char exe_path[PATH_MAX];
-        char lib_path[PATH_MAX];
-        uint32_t size = sizeof(exe_path);
-
+        size = sizeof(exe_path);
         if (_NSGetExecutablePath(exe_path, &size) == 0)
         {
             /* Find the bin directory */
-            char* last_slash = strrchr(exe_path, '/');
+            last_slash = strrchr(exe_path, '/');
             if (last_slash)
             {
                 *last_slash = '\0';
                 /* Try ../lib/ relative to executable */
                 snprintf(lib_path, sizeof(lib_path), "%s/../lib/%s", exe_path, name);
-                void* handle = real_dlopen(lib_path, flags);
-                if (handle) return handle;
+                fprintf(stderr, "[Soju dlopen] Trying bundled: %s\n", lib_path);
+                handle = real_dlopen(lib_path, flags);
+                if (handle) {
+                    fprintf(stderr, "[Soju dlopen] SUCCESS: %s\n", lib_path);
+                    return handle;
+                }
+                fprintf(stderr, "[Soju dlopen] FAILED: %s (trying system)\n", lib_path);
             }
         }
     }
