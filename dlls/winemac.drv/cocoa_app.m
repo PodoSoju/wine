@@ -390,8 +390,27 @@ static NSString* WineLocalizedString(unsigned int stringID)
             NSMenuItem* item;
 
             /* [Soju] Hide from Dock based on SOJU_HIDE_DOCK value */
-            /* 0=Regular (default), 1=Accessory immediate, 2=Regular->Accessory delayed */
-            if (self.sojuHideDock == 2)
+            /* 0=Regular (default), 1=Accessory immediate, 2=Regular->Accessory delayed, 3=Keep current (for LSUIElement) */
+            NSLog(@"[Soju] transformProcessToForeground: sojuHideDock=%d currentPolicy=%ld bundleID=%@ bundlePath=%@",
+                  self.sojuHideDock, (long)[NSApp activationPolicy],
+                  [[NSBundle mainBundle] bundleIdentifier], [[NSBundle mainBundle] bundlePath]);
+
+            if (self.sojuHideDock == 3)
+            {
+                /* Mode 3: Keep current policy (for Wine.app with LSUIElement=YES) */
+                /* Don't change policy - LSUIElement already set us as Accessory */
+                NSLog(@"[Soju] Mode 3: Keeping current policy (LSUIElement)");
+                if (activateIfTransformed)
+                {
+                    [self tryToActivateIgnoringOtherApps:YES];
+                    /* Force window activation for Accessory apps */
+                    for (NSWindow* window in [NSApp windows])
+                    {
+                        [window makeKeyAndOrderFront:nil];
+                    }
+                }
+            }
+            else if (self.sojuHideDock == 2)
             {
                 /* Mode 2: Start Regular, activate, then switch to Accessory (fully hidden) */
                 [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
