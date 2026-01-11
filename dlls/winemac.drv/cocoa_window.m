@@ -3489,6 +3489,19 @@ void macdrv_set_cocoa_window_title(macdrv_window w, const unsigned short* title,
         titleString = [NSString stringWithCharacters:title length:length];
     else
         titleString = @"";
+
+    /* [Soju] Fallback: if title is empty, use SOJU_EXE_PATH */
+    if ([titleString length] == 0)
+    {
+        const char* exePath = getenv("SOJU_EXE_PATH");
+        if (exePath)
+        {
+            NSString* fullPath = [NSString stringWithUTF8String:exePath];
+            titleString = [[fullPath lastPathComponent] stringByDeletingPathExtension];
+            NSLog(@"[Soju] Empty title, using fallback from SOJU_EXE_PATH: %@", titleString);
+        }
+    }
+
     OnMainThreadAsync(^{
         [window setTitle:titleString];
         if ([window isOrderedIn] && ![window isExcludedFromWindowsMenu])
