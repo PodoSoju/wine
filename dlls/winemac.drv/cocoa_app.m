@@ -139,7 +139,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
 @property (retain, nonatomic) NSTimer* cursorTimer;
 @property (retain, nonatomic) NSCursor* cursor;
 @property (retain, nonatomic) NSImage* applicationIcon;
-@property (assign, nonatomic) BOOL sojuHideDock;  /* [Soju] Hide from Dock flag */
+@property (assign, nonatomic) int sojuHideDock;  /* [Soju] Hide from Dock: 0=off, 1=accessory, 2=delayed */
 @property (readonly, nonatomic) BOOL inputSourceIsInputMethod;
 @property (retain, nonatomic) WineWindow* mouseCaptureWindow;
 
@@ -202,7 +202,9 @@ static NSString* WineLocalizedString(unsigned int stringID)
             NSLog(@"[Soju] WINEPREFIX: %s", getenv("WINEPREFIX") ?: "(null)");
 
             /* [Soju] Save SOJU_HIDE_DOCK for later use (env may not be available in child processes) */
-            self.sojuHideDock = (getenv("SOJU_HIDE_DOCK") != NULL);
+            /* 0=off (default), 1=accessory immediate, 2=regular->accessory delayed (fully hidden) */
+            const char* hideDockEnv = getenv("SOJU_HIDE_DOCK");
+            self.sojuHideDock = hideDockEnv ? atoi(hideDockEnv) : 0;
 
             /* ========== [Soju] App Name & Path Resolution ========== */
             NSString* appName = nil;
@@ -387,14 +389,35 @@ static NSString* WineLocalizedString(unsigned int stringID)
             NSString* title;
             NSMenuItem* item;
 
-            /* [Soju] Hide from Dock if SOJU_HIDE_DOCK was set at init (PodoJuice wrapper shows instead) */
-            if (self.sojuHideDock)
-                [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
-            else
+            /* [Soju] Hide from Dock based on SOJU_HIDE_DOCK value */
+            /* 0=Regular (default), 1=Accessory immediate, 2=Regular->Accessory delayed */
+            if (self.sojuHideDock == 2)
+            {
+                /* Mode 2: Start Regular, activate, then switch to Accessory (fully hidden) */
                 [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+                if (activateIfTransformed)
+                    [self tryToActivateIgnoringOtherApps:YES];
 
-            if (activateIfTransformed)
-                [self tryToActivateIgnoringOtherApps:YES];
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)),
+                               dispatch_get_main_queue(), ^{
+                    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+                    NSLog(@"[Soju] Switched to Accessory policy (delayed)");
+                });
+            }
+            else if (self.sojuHideDock == 1)
+            {
+                /* Mode 1: Accessory immediate (may leave small Dock remnant) */
+                [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+                if (activateIfTransformed)
+                    [self tryToActivateIgnoringOtherApps:YES];
+            }
+            else
+            {
+                /* Mode 0: Regular (default Wine behavior) */
+                [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+                if (activateIfTransformed)
+                    [self tryToActivateIgnoringOtherApps:YES];
+            }
 
             if (!enable_app_nap)
             {
