@@ -139,6 +139,7 @@ static NSString* WineLocalizedString(unsigned int stringID)
 @property (retain, nonatomic) NSTimer* cursorTimer;
 @property (retain, nonatomic) NSCursor* cursor;
 @property (retain, nonatomic) NSImage* applicationIcon;
+@property (assign, nonatomic) BOOL sojuHideDock;  /* [Soju] Hide from Dock flag */
 @property (readonly, nonatomic) BOOL inputSourceIsInputMethod;
 @property (retain, nonatomic) WineWindow* mouseCaptureWindow;
 
@@ -197,7 +198,11 @@ static NSString* WineLocalizedString(unsigned int stringID)
             NSLog(@"[Soju] SOJU_APP_NAME: %s", getenv("SOJU_APP_NAME") ?: "(null)");
             NSLog(@"[Soju] SOJU_APP_PATH: %s", getenv("SOJU_APP_PATH") ?: "(null)");
             NSLog(@"[Soju] SOJU_WORKSPACE_ID: %s", getenv("SOJU_WORKSPACE_ID") ?: "(null)");
+            NSLog(@"[Soju] SOJU_HIDE_DOCK: %s", getenv("SOJU_HIDE_DOCK") ?: "(null)");
             NSLog(@"[Soju] WINEPREFIX: %s", getenv("WINEPREFIX") ?: "(null)");
+
+            /* [Soju] Save SOJU_HIDE_DOCK for later use (env may not be available in child processes) */
+            sojuHideDock = (getenv("SOJU_HIDE_DOCK") != NULL);
 
             /* ========== [Soju] App Name & Path Resolution ========== */
             NSString* appName = nil;
@@ -382,8 +387,8 @@ static NSString* WineLocalizedString(unsigned int stringID)
             NSString* title;
             NSMenuItem* item;
 
-            /* [Soju] Hide from Dock if SOJU_HIDE_DOCK is set (PodoJuice wrapper shows instead) */
-            if (getenv("SOJU_HIDE_DOCK"))
+            /* [Soju] Hide from Dock if SOJU_HIDE_DOCK was set at init (PodoJuice wrapper shows instead) */
+            if (self.sojuHideDock)
                 [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
             else
                 [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
