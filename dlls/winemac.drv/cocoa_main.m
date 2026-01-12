@@ -97,16 +97,14 @@ static void run_cocoa_app(void* info)
                 }
             }
 
-            if (hideDockMode > 0)
+            if (hideDockMode == 1 || hideDockMode == 3)
             {
-                /* Pre-create a temporary NSApplication to set policy, then replace */
-                /* This prevents Dock tile from appearing during WineApplication init */
+                /* Mode 1, 3: Pre-set UIElement to prevent Dock tile */
                 NSLog(@"[Soju] Pre-setting activation policy before NSApp creation (mode=%d)", hideDockMode);
-
-                /* For modes 1, 2, 3: start as Accessory to prevent Dock tile */
                 ProcessSerialNumber psn = { 0, kCurrentProcess };
                 TransformProcessType(&psn, kProcessTransformToUIElementApplication);
             }
+            /* Mode 2: Don't transform here - cocoa_app.m will handle Regular→Accessory transition */
 
             [WineApplication sharedApplication];
             created_app = TRUE;
